@@ -7,8 +7,9 @@ output:
     toc: yes
     toc_depth: '3'
     df_print: paged
-    warning: false
     code_folding: hide
+    knitr:
+      warning: FALSE
   word_document:
     toc: yes
     toc_depth: '3'
@@ -46,75 +47,72 @@ Participants did not perform a predetermined number of serves. Rather, the parti
 
 # Data Analysis
 
-**Loading the required package to import the dataset**
+```{r,warning=FALSE}
+#Loading the required package to import the dataset
 
-```{r}
 library("readxl") #Loading this package
 library("psych")
 library("ez") #loading the needed packages
 library("apa") #loading the needed packages
 library("dplyr") #loading the needed packages
 library("tidyr")
-library("lmPerm")
+library("lme4")
 library("ggplot2") 
-```
 
-**Importing the dataset**
+#Importing dataset
+data = read_excel("arrudetal_2023_dataset.xlsx")
 
-```{r}
-dataR= read_excel("dataset_R.xlsx")
-```
-
-**Determining the factors -\> Id, Level, order, and condition**
-
-```{r}
-dataR$part_id <-factor(dataR$part_id)
-dataR$level <-factor(dataR$level,c('1', '2'), labels=c("Less Experienced", "More Experienced"))
-dataR$order <-factor(dataR$order)
-dataR$condition <-factor(dataR$condition,c('1','2'), labels=c("Sideline","Short"))
+#Assigning IV: ID, Level, Order, Condition
+data$part_id <-factor(data$part_id)
+data$level <-factor(data$level,c('1', '2'), labels=c("Less Experienced", "More Experienced"))
+data$order <-factor(data$order)
+data$condition <-factor(data$condition,c('1','2'), labels=c("Sideline","Short"))
 ```
 
 ## **Descriptive Analysis**
 
 ### **Less Experienced**
 
-```{r}
-describe(dataR[dataR$level == 'Less Experienced',])
+```{r,warning=FALSE}
+describe(data[data$level == 'Less Experienced',])
 ```
 
 ### **More Experienced**
 
-```{r}
-describe(dataR[dataR$level == 'More Experienced',])
+```{r,warning=FALSE}
+describe(data[data$level == 'More Experienced',])
 ```
 
 ## Reported Gap Size
 
-```{r}
-shapiro.test(dataR$JUDG)
-anova_jud<-ezANOVA(data=dataR,dv= JUDG, wid= part_id,within= condition,
+```{r,warning=FALSE}
+
+#Running anova model including order as control variable
+#Order was not significant so it can be removed from the model
+anova_jud_with_order <- ezANOVA(data = data, dv = gap_size, wid = part_id,
+                     within = condition, between = c(level, order),
+                     type = 3, return_aov = TRUE, detailed = TRUE)
+cat("The factor 'order' was not significant (", anova_jud_with_order$ANOVA$p[3], "). So it was removed from the model\n", sep = "")
+
+
+
+#Running the model without order
+anova_jud<-ezANOVA(data=data,dv= gap_size, wid= part_id,within= condition,
                  between= level,type=3,return_aov=TRUE,detailed = TRUE)
 anova_apa(anova_jud,es=c("pes"))
 ```
 
-```{r}
-anova_gap_perm<-aovp(JUDG ~ level*condition +(1/part_id), data=dataR) #using permutation
-summary(anova_gap_perm)
+**Figure 2. Mean perceived minimum serve-able gap size**
 
-```
+```{r,warning=FALSE}
+#Adding a function to calculate standard error
+se <- function(x) sd(x)/sqrt(length(x)) 
 
-**Plotting the main effect of condition**
-
-```{r}
-
-
-se <- function(x) sd(x)/sqrt(length(x)) #Standard Error function
-
-(plot_quest <- dataR %>% 
+(plot_quest <- data %>% 
     mutate(
       Condition = condition %>% as.factor,Level = level %>% as.factor) %>% 
-    group_by(Condition) %>% 
-    summarise(mean_quest = mean(JUDG, na.rm = TRUE),se_quest=se(JUDG)
+    group_by(Condition,Level) %>% 
+    summarise(mean_perf = mean(gap_size, na.rm = TRUE),se_perf=se(gap_size)
     ) %>% 
     drop_na())
 
@@ -122,48 +120,37 @@ pd=position_dodge(0.3)
 
 plot_quest %>% 
   
-  ggplot(aes(Condition,mean_quest, group=Condition,fill=Condition)) +
+  ggplot(aes(Condition,mean_perf, group=Level,fill=Level)) +
   geom_bar(stat="identity", color="black", 
            position=position_dodge())  +scale_y_continuous(expand = expansion(mult = c(0,0.2)),
                                                            breaks=(c(0,.5,1,1.5,2,2.5,3,3.5,4,4.5)))+
-  geom_errorbar(aes(ymin=mean_quest-se_quest, ymax=mean_quest+se_quest), width=.2,
+  geom_errorbar(aes(ymin=mean_perf-se_perf, ymax=mean_perf+se_perf), width=.2,
                 position=position_dodge(.9)) + ylab(label=c("Mean Gap Size (m)"))+
   theme_light(base_size=16)+ theme(legend.title=element_blank(),panel.border = element_blank(),
                                    panel.grid.major.x = element_blank(),panel.grid.minor.y = element_blank(),
                                    axis.title.x = element_blank())+
-  scale_fill_grey( start = 0.4,end = 0.8,aesthetics = "fill",labels = c("Sideline", "Short"))+
-  theme(axis.line = element_line(colour = "black")) +geom_hline(yintercept = 0)
+  scale_fill_grey( start = 0.4,end = 0.8,aesthetics = "fill")+
+  theme(axis.line = element_line(colour = "black")) +geom_hline(yintercept = 0) +
+  labs(caption = "Figure 2. Mean perceived minimum serve-able gap size \n as a function of serve type (Short vs. Sideline), \nand experience groups (Less vs. More). \n The error bars represent the standard error of the mean. ")
 ```
 
-**Confidence Level**
+## **Performance Analysis**
 
-```{r}
-shapiro.test(dataR$CONFI)
-anova_con<-ezANOVA(data=dataR,dv= CONFI, wid= part_id,within= condition,
-                   between= level,type=3,return_aov=TRUE,detailed = TRUE)
-anova_apa(anova_con,es=c("pes"))
-
-
-```
-
-**Analysis of Performance: Using quasi-binomial logistic regression because the performance is a percentage and non-parametric**
-
-```{r}
-library("lme4")
-quasi_model=glm(COEF_PERF ~ level*condition +(1/part_id),
-                 data=dataR,family = "quasibinomial")
-summary(quasi_model) # names are weird, but first line is intercept, second level, third condition, and fourth the interaction
+```{r,warning=FALSE}
+quasi_model=glm(proportion_of_successfull ~ level*condition +(1/part_id),
+                 data=data,family = "quasibinomial")
+summary(quasi_model) 
 
 ```
 
 **Plotting performance**
 
-```{r}
-(plot_perf <- dataR %>% 
+```{r,warning=FALSE}
+(plot_perf <- data %>% 
       mutate(
         Condition = condition %>% as.factor,Level = level %>% as.factor) %>% 
       group_by(Level, Condition) %>% 
-      summarise(mean_perf = mean(COEF_PERF, na.rm = TRUE),se_perf=se(COEF_PERF)
+      summarise(mean_perf = mean(proportion_of_successfull, na.rm = TRUE),se_perf=se(proportion_of_successfull)
       ) %>% 
       drop_na())
   comparisons=c
@@ -173,7 +160,7 @@ summary(quasi_model) # names are weird, but first line is intercept, second leve
   
   plot_perf %>% 
     
-    ggplot(aes(Level,mean_perf, group=Condition,fill=Condition)) +
+    ggplot(aes(Condition,mean_perf, group=Level,fill=Level)) +
     geom_bar(stat="identity", color="black", 
              position=position_dodge())  +scale_y_continuous(expand = expansion(mult = c(0, 0.2)),
                                                              breaks=(c(0,0.1,.2,.3,.4,.5,.6,.7,0.8)))+
@@ -181,7 +168,58 @@ summary(quasi_model) # names are weird, but first line is intercept, second leve
                   position=position_dodge(.9)) + ylab(label=c("Proportion of Successfull Serves"))+
     theme_light(base_size=16)+ theme(legend.title=element_blank(),panel.border = element_blank(),
                                      panel.grid.major.x = element_blank(),panel.grid.minor.y = element_blank())+
-    scale_fill_grey( start = 0.4,end = 0.8,aesthetics = "fill",labels = c("Sideline", "Short"))+
+    scale_fill_grey( start = 0.4,end = 0.8,aesthetics = "fill",labels = c("Less Experienced", "More Experienced"))+
     theme(axis.line = element_line(colour = "black"),axis.title.x = element_blank())+
-    geom_hline(yintercept = 0)
+    geom_hline(yintercept = 0)+
+  labs(caption = "Figure 3. The proportion of successful serves \n(out of the number of attempts required to complete 3 valid serves) \nas a function of serve type (Short vs. Sideline) \nand experience groups (Less vs. More). \nThe error bars represent the standard error of the mean.")
+  
+```
+
+### Post-hoc analysis
+
+```{r,warning=FALSE}
+#Subsetting into success and failure
+success_fail=cbind(data$amount_in_gap,data$amount_of_serves)
+success=data$amount_in_gap
+fails=data$amount_of_serves-data$amount_in_gap
+
+data$success_count=success
+data$fails_count=fails
+
+#Making contingency table
+data_chi <- data %>%  #using pipe function to determine the factors
+    group_by(level,condition) %>% 
+    summarise(total_in = sum(success_count),total_out=sum(fails_count)
+    ) %>% 
+    drop_na()
+
+#sideline more experienced vs. less experienced
+table=data_chi[1,3:4]
+table[2,]=data_chi[3,3:4]
+chisq=chisq.test(table)
+# Print the results
+cat("More vs. Less Experienced for Sideline Serves \nChi-square statistic: ", chisq$statistic," \np-value:",chisq$p.value,sep="")
+
+
+#short more experienced vs. less experienced
+table=data_chi[2,3:4]
+table[2,]=data_chi[4,3:4]
+chisq=chisq.test(table)
+cat("More vs. Less Experienced for Short Serves \nChi-square statistic: ", chisq$statistic," \np-value:",chisq$p.value,sep="")
+
+
+#less experienced short vs. sideline
+table=data_chi[1,3:4]
+table[2,]=data_chi[2,3:4]
+mcnem_test=mcnemar.test(as.matrix(table))
+# Print the results
+cat("Short vs. Sideline Serves for Less Experienced \nChi-square statistic: ", mcnem_test$statistic," \np-value:",mcnem_test$p.value,sep="")
+
+
+#more experienced short vs. sideline
+table=data_chi[3,3:4]
+table[2,]=data_chi[4,3:4]
+mcnem_test=mcnemar.test(as.matrix(table))
+cat("Short vs. Sideline Serves for More Experienced \nChi-square statistic: ", mcnem_test$statistic," \np-value:",mcnem_test$p.value,sep="")
+
 ```
